@@ -5,9 +5,9 @@ fn main() -> Result<(), BlakeoutGpuError> {
     println!("Blakeout GPU Miner Example");
     println!("==========================\n");
 
-    // Initialize GPU miner with batch size of 256
-    // (smaller batch = less memory, faster allocation)
-    let batch_size = 256;
+    // Initialize GPU miner with optimal batch size
+    // Larger batch = better GPU utilization (4096 хешей = 8GB VRAM)
+    let batch_size = 4096;
     let gpu_miner = match BlakeoutGpu::new(batch_size) {
         Ok(miner) => {
             println!("✓ GPU initialized successfully");
@@ -26,7 +26,7 @@ fn main() -> Result<(), BlakeoutGpuError> {
 
     // Test data
     let input_data = b"ALFIS Block Data - Testing GPU Mining";
-    let target_difficulty = 10; // Looking for hash with difficulty >= 10
+    let target_difficulty = 18; // Looking for hash with difficulty >= 18
 
     println!("Mining parameters:");
     println!("  Input: {:?}", String::from_utf8_lossy(input_data));
