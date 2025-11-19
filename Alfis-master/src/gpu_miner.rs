@@ -8,7 +8,6 @@ use std::time::Instant;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
-use crate::blockchain::hash_utils::*;
 use crate::{Block, Bytes};
 
 /// GPU miner configuration

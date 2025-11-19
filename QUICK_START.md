@@ -19,9 +19,12 @@ git pull
 ```bash
 cd Alfis-master
 
-# Полная пересборка с GPU поддержкой
+# Полная пересборка с GPU поддержкой (без webgui)
 cargo clean
-cargo build --release --features gpu
+cargo build --release --features gpu --no-default-features
+
+# Или с webgui (требует libsoup-3.0 и другие системные библиотеки):
+# cargo build --release --features "gpu,webgui,doh"
 ```
 
 **Важно:** Убедитесь что `nvcc` доступен:

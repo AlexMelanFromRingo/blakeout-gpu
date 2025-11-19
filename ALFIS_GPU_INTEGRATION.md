@@ -23,12 +23,14 @@ nvidia-smi
 ```bash
 cd Alfis-master
 
-# Release build с GPU поддержкой
-cargo build --release --features gpu
+# Release build с GPU поддержкой (без webgui)
+cargo build --release --features gpu --no-default-features
 
-# Или добавьте gpu к default features
-cargo build --release --features "webgui,doh,gpu"
+# Или с webgui (требует системные библиотеки: libsoup-3.0, libwebkit2gtk-4.1, etc.)
+# cargo build --release --features "webgui,doh,gpu"
 ```
+
+**Примечание:** Если получаете ошибку про `libsoup-3.0`, используйте версию без webgui (первую команду).
 
 ### Шаг 3: Запустите ALFIS
 

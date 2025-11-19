@@ -48,7 +48,8 @@ name = "alfis"
 version = "0.8.8"
 dependencies = [
  "bincode",
- "blakeout",
+ "blakeout 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "blakeout-gpu",
  "byteorder",
  "chacha20poly1305",
  "chrono",
@@ -192,11 +193,27 @@ dependencies = [
 [[package]]
 name = "blakeout"
 version = "0.3.0"
+dependencies = [
+ "blake2",
+ "digest 0.9.0",
+]
+
+[[package]]
+name = "blakeout"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81efe7c4220f454dd7fb0eeea7f44f0eb7785dae55115c8fad02b52ef578ac37"
 dependencies = [
  "blake2",
  "digest 0.9.0",
+]
+
+[[package]]
+name = "blakeout-gpu"
+version = "0.1.0"
+dependencies = [
+ "blakeout 0.3.0",
+ "cc",
 ]
 
 [[package]]
