@@ -1,7 +1,10 @@
 use crate::BlakeoutGpuError;
+
+#[cfg(not(no_cuda))]
 use std::os::raw::{c_int, c_uchar, c_uint};
 
 // FFI bindings to CUDA functions
+#[cfg(not(no_cuda))]
 #[link(name = "blakeout_cuda")]
 extern "C" {
     fn blakeout_hash_batch(
@@ -15,20 +18,51 @@ extern "C" {
     ) -> c_int;
 }
 
+/// Hash a batch of nonces using GPU (internal wrapper)
+#[cfg(not(no_cuda))]
+unsafe fn cuda_blakeout_hash_batch(
+    input_data: *const c_uchar,
+    input_len: usize,
+    nonces: *const u64,
+    nonce_count: c_uint,
+    output_hashes: *mut c_uchar,
+    output_difficulties: *mut c_uint,
+    target_difficulty: c_uint,
+) -> c_int {
+    blakeout_hash_batch(
+        input_data,
+        input_len,
+        nonces,
+        nonce_count,
+        output_hashes,
+        output_difficulties,
+        target_difficulty,
+    )
+}
+
 // CUDA error codes
+#[cfg(not(no_cuda))]
 const CUDA_SUCCESS: c_int = 0;
 
 /// Check if CUDA is available
 pub fn is_cuda_available() -> bool {
-    // Try to initialize CUDA
-    std::process::Command::new("nvidia-smi")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    #[cfg(no_cuda)]
+    {
+        false
+    }
+    #[cfg(not(no_cuda))]
+    {
+        // Try to initialize CUDA
+        std::process::Command::new("nvidia-smi")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
 }
 
-/// Hash a batch of nonces using GPU
-pub unsafe fn blakeout_hash_batch(
+/// Hash a batch of nonces using GPU (safe wrapper)
+#[cfg(not(no_cuda))]
+pub unsafe fn hash_batch(
     input_data: &[u8],
     nonces: &[u64],
     output_hashes: &mut [u8],
@@ -47,7 +81,7 @@ pub unsafe fn blakeout_hash_batch(
         return Err(BlakeoutGpuError::InvalidInput);
     }
 
-    let result = blakeout_hash_batch(
+    let result = cuda_blakeout_hash_batch(
         input_data.as_ptr(),
         input_data.len(),
         nonces.as_ptr(),
@@ -65,4 +99,16 @@ pub unsafe fn blakeout_hash_batch(
             result
         )))
     }
+}
+
+/// Hash a batch of nonces using GPU (stub for no CUDA)
+#[cfg(no_cuda)]
+pub unsafe fn hash_batch(
+    _input_data: &[u8],
+    _nonces: &[u64],
+    _output_hashes: &mut [u8],
+    _output_difficulties: &mut [u32],
+    _target_difficulty: u32,
+) -> Result<(), BlakeoutGpuError> {
+    Err(BlakeoutGpuError::NoGpuAvailable)
 }

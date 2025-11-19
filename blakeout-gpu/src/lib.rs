@@ -57,7 +57,7 @@ impl BlakeoutGpu {
         let mut output_difficulties = vec![0u32; self.batch_size];
 
         unsafe {
-            gpu::blakeout_hash_batch(
+            gpu::hash_batch(
                 input_data,
                 &nonces,
                 &mut output_hashes,
