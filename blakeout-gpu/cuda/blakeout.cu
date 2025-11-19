@@ -164,18 +164,18 @@ extern "C" {
 
         cudaError_t err;
 
-        // Use asynchronous memcpy to overlap transfers with computation
-        err = cudaMemcpyAsync(ctx->d_input_data, h_input_data, input_len, cudaMemcpyHostToDevice, 0);
+        // Copy input to device (sync is faster for pageable memory)
+        err = cudaMemcpy(ctx->d_input_data, h_input_data, input_len, cudaMemcpyHostToDevice);
         if (err != cudaSuccess) return err;
 
-        err = cudaMemcpyAsync(ctx->d_nonces, h_nonces, nonce_count * sizeof(uint64_t), cudaMemcpyHostToDevice, 0);
+        err = cudaMemcpy(ctx->d_nonces, h_nonces, nonce_count * sizeof(uint64_t), cudaMemcpyHostToDevice);
         if (err != cudaSuccess) return err;
 
-        // Launch kernel with maximum occupancy
+        // Launch kernel
         int threadsPerBlock = 256;
         int blocksPerGrid = (nonce_count + threadsPerBlock - 1) / threadsPerBlock;
 
-        blakeout_hash_kernel<<<blocksPerGrid, threadsPerBlock, 0, 0>>>(
+        blakeout_hash_kernel<<<blocksPerGrid, threadsPerBlock>>>(
             ctx->d_input_data, input_len, ctx->d_nonces, nonce_count,
             ctx->d_buffers, ctx->d_output_hashes, ctx->d_output_difficulties, target_difficulty
         );
@@ -183,15 +183,15 @@ extern "C" {
         err = cudaGetLastError();
         if (err != cudaSuccess) return err;
 
-        // Asynchronous copy results back
-        err = cudaMemcpyAsync(h_output_hashes, ctx->d_output_hashes, nonce_count * HASH_SIZE, cudaMemcpyDeviceToHost, 0);
-        if (err != cudaSuccess) return err;
-
-        err = cudaMemcpyAsync(h_output_difficulties, ctx->d_output_difficulties, nonce_count * sizeof(uint32_t), cudaMemcpyDeviceToHost, 0);
-        if (err != cudaSuccess) return err;
-
-        // Synchronize only once at the end
+        // Wait for kernel completion
         err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) return err;
+
+        // Copy results back to host
+        err = cudaMemcpy(h_output_hashes, ctx->d_output_hashes, nonce_count * HASH_SIZE, cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess) return err;
+
+        err = cudaMemcpy(h_output_difficulties, ctx->d_output_difficulties, nonce_count * sizeof(uint32_t), cudaMemcpyDeviceToHost);
         if (err != cudaSuccess) return err;
 
         return cudaSuccess;
