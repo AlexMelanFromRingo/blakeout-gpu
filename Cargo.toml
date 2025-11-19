@@ -1,0 +1,22 @@
+[package]
+name = "blakeout"
+version = "0.3.0"
+description = "Memory hard hashing algorithm based on Blake2s"
+authors = ["Revertron <blakeout@revertron.com>"]
+edition = "2018"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Revertron/Blakeout"
+keywords = ["crypto", "blake2", "blakeout", "hash", "digest"]
+categories = ["cryptography"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+digest = "0.9.0"
+blake2 = "0.9.1"
+
+[profile.dev]
+opt-level = 2
+
+[profile.test]
+opt-level = 2
