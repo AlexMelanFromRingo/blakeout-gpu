@@ -16,31 +16,60 @@ git pull
 
 ## 🔨 Компиляция ALFIS с GPU
 
+### Автоматическая сборка (рекомендуется):
+
 ```bash
-cd Alfis-master
-
-# Полная пересборка с GPU поддержкой (без webgui)
-cargo clean
-cargo build --release --features gpu --no-default-features
-
-# Или с webgui (требует libsoup-3.0 и другие системные библиотеки):
-# cargo build --release --features "gpu,webgui,doh"
+# Запустите скрипт автоматической сборки
+chmod +x build_with_gpu.sh
+./build_with_gpu.sh
 ```
 
-**Важно:** Убедитесь что `nvcc` доступен:
+Скрипт автоматически:
+1. ✅ Проверит наличие CUDA
+2. ✅ Соберет blakeout-gpu с CUDA
+3. ✅ Соберет ALFIS с GPU поддержкой
+4. ✅ Создаст run_alfis_gpu.sh для запуска
+
+### Ручная сборка:
+
 ```bash
+# 1. Убедитесь что nvcc доступен
 nvcc --version
-```
 
-Если нет - добавьте в PATH:
-```bash
+# Если нет - добавьте в PATH:
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+# 2. Соберите blakeout-gpu
+cd blakeout-gpu
+cargo build --release
+
+# 3. Соберите ALFIS
+cd ../Alfis-master
+cargo build --release --features gpu --no-default-features
+
+# 4. Найдите путь к CUDA библиотеке
+CUDA_LIB=$(find ../blakeout-gpu/target/release/build -name "libblakeout_cuda.so" | head -1)
+export LD_LIBRARY_PATH=$(dirname "$CUDA_LIB"):$LD_LIBRARY_PATH
 ```
 
 ## ▶️ Запуск
 
+### Если использовали автоматическую сборку:
+
 ```bash
+cd Alfis-master
+./run_alfis_gpu.sh
+```
+
+### Если собирали вручную:
+
+```bash
+# Найдите CUDA библиотеку
+CUDA_LIB=$(find ../blakeout-gpu/target/release/build -name "libblakeout_cuda.so" | head -1)
+
+# Установите LD_LIBRARY_PATH и запустите
+export LD_LIBRARY_PATH=$(dirname "$CUDA_LIB"):$LD_LIBRARY_PATH
 ./target/release/alfis
 ```
 
@@ -102,21 +131,41 @@ nvcc --version
 # https://developer.nvidia.com/cuda-downloads
 ```
 
+### "libblakeout_cuda.so: cannot open shared object file"
+
+Это означает что CUDA библиотека не найдена. Решения:
+
+**Вариант 1 (рекомендуется):** Используйте `run_alfis_gpu.sh`:
+```bash
+cd Alfis-master
+./run_alfis_gpu.sh
+```
+
+**Вариант 2:** Установите LD_LIBRARY_PATH вручную:
+```bash
+CUDA_LIB=$(find ../blakeout-gpu/target/release/build -name "libblakeout_cuda.so" | head -1)
+export LD_LIBRARY_PATH=$(dirname "$CUDA_LIB"):$LD_LIBRARY_PATH
+./target/release/alfis
+```
+
+**Вариант 3:** Пересоберите с автоматическим скриптом:
+```bash
+cd ~/Rust/blakeout-gpu2/blakeout-gpu
+./build_with_gpu.sh
+```
+
 ### Ошибки компиляции
 
 ```bash
+# Убедитесь что nvcc доступен
+nvcc --version
+
 # Убедитесь что путь к CUDA правильный
 export CUDA_PATH=/usr/local/cuda
+export PATH=/usr/local/cuda/bin:$PATH
 
-# Пересоберите blakeout-gpu
-cd blakeout-gpu
-cargo clean
-cargo build --release
-
-# Затем ALFIS
-cd ../Alfis-master
-cargo clean
-cargo build --release --features gpu
+# Используйте автоматический скрипт
+./build_with_gpu.sh
 ```
 
 ### GPU slower than expected
