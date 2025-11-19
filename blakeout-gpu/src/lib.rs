@@ -22,29 +22,30 @@ impl fmt::Display for BlakeoutGpuError {
 
 impl Error for BlakeoutGpuError {}
 
-/// Result of a batch hash operation
 pub struct HashResult {
     pub nonce: u64,
     pub hash: [u8; 32],
     pub difficulty: u32,
 }
 
-/// GPU-accelerated Blakeout hasher
 pub struct BlakeoutGpu {
+    ctx: *mut gpu::BlakeoutContext,
     batch_size: usize,
 }
 
+unsafe impl Send for BlakeoutGpu {}
+unsafe impl Sync for BlakeoutGpu {}
+
 impl BlakeoutGpu {
-    /// Create a new GPU hasher with specified batch size
     pub fn new(batch_size: usize) -> Result<Self, BlakeoutGpuError> {
         if !gpu::is_cuda_available() {
             return Err(BlakeoutGpuError::NoGpuAvailable);
         }
-        Ok(BlakeoutGpu { batch_size })
+        
+        let ctx = unsafe { gpu::create_context(batch_size)? };
+        Ok(BlakeoutGpu { ctx, batch_size })
     }
 
-    /// Hash a batch of nonces in parallel on GPU
-    /// Returns results for all hashes, caller should filter by difficulty
     pub fn hash_batch(
         &self,
         input_data: &[u8],
@@ -52,12 +53,12 @@ impl BlakeoutGpu {
         target_difficulty: u32,
     ) -> Result<Vec<HashResult>, BlakeoutGpuError> {
         let nonces: Vec<u64> = (start_nonce..start_nonce + self.batch_size as u64).collect();
-
         let mut output_hashes = vec![0u8; self.batch_size * 32];
         let mut output_difficulties = vec![0u32; self.batch_size];
 
         unsafe {
-            gpu::hash_batch(
+            gpu::hash_batch_ctx(
+                self.ctx,
                 input_data,
                 &nonces,
                 &mut output_hashes,
@@ -80,8 +81,6 @@ impl BlakeoutGpu {
         Ok(results)
     }
 
-    /// Find a hash that meets the target difficulty
-    /// Returns the first matching hash found, or None if none found in batch
     pub fn find_hash(
         &self,
         input_data: &[u8],
@@ -99,9 +98,16 @@ impl BlakeoutGpu {
         Ok(None)
     }
 
-    /// Get the batch size
     pub fn batch_size(&self) -> usize {
         self.batch_size
+    }
+}
+
+impl Drop for BlakeoutGpu {
+    fn drop(&mut self) {
+        unsafe {
+            gpu::destroy_context(self.ctx);
+        }
     }
 }
 
@@ -111,9 +117,8 @@ mod tests {
 
     #[test]
     fn test_gpu_available() {
-        // This test will pass if GPU is available
         if gpu::is_cuda_available() {
-            let hasher = BlakeoutGpu::new(1024);
+            let hasher = BlakeoutGpu::new(256);
             assert!(hasher.is_ok());
         }
     }
