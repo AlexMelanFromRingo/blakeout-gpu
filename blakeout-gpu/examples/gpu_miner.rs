@@ -5,8 +5,9 @@ fn main() -> Result<(), BlakeoutGpuError> {
     println!("Blakeout GPU Miner Example");
     println!("==========================\n");
 
-    // Initialize GPU miner with batch size of 4096
-    let batch_size = 4096;
+    // Initialize GPU miner with batch size of 256
+    // (smaller batch = less memory, faster allocation)
+    let batch_size = 256;
     let gpu_miner = match BlakeoutGpu::new(batch_size) {
         Ok(miner) => {
             println!("✓ GPU initialized successfully");

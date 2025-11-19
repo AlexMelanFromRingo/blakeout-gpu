@@ -59,7 +59,7 @@ fn bench_comparison(c: &mut Criterion) {
             for i in 0..batch_size {
                 let mut hasher = Blakeout::new();
                 hasher.update(black_box(data));
-                hasher.update(&i.to_le_bytes());
+                hasher.update(&(i as u64).to_le_bytes());
                 black_box(hasher.result());
             }
         });
