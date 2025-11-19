@@ -1,169 +1,139 @@
-# Blakeout GPU Mining for ALFIS
+# Blakeout GPU Mining для ALFIS
 
-GPU-accelerated mining implementation for ALFIS blockchain using CUDA.
+GPU-ускоренная версия алгоритма Blakeout для майнинга ALFIS на NVIDIA GPU.
 
-## 📁 Project Structure
+## 🎯 Что это?
 
-This repository contains:
+Это порт библиотеки [Blakeout](https://github.com/Revertron/blakeout) на CUDA для ускорения майнинга блоков в блокчейне ALFIS.
 
-- **`blakeout-master/`** - Original Blakeout hash library (Rust)
-- **`blakeout-gpu/`** - GPU-accelerated Blakeout implementation (CUDA + Rust)
-- **`Alfis-master/`** - ALFIS blockchain with integrated GPU mining support
-- **`GPU_MINING.md`** - Comprehensive guide (Russian)
+**Производительность:**
+- **RTX 4080 SUPER:** ~1,682 H/s (3.7x быстрее CPU)
+- **RTX 4090:** ~2,000-2,500 H/s  
+- **RTX 3080:** ~800-1,000 H/s
 
-## 🚀 Quick Start
+## 📚 Документация
 
-### Prerequisites
+### Быстрый старт
+- **Linux/MacOS:** [QUICK_START.md](QUICK_START.md)
+- **Windows:** [WINDOWS_BUILD.md](WINDOWS_BUILD.md)
 
-- NVIDIA GPU (Compute Capability 6.0+)
-- CUDA Toolkit 11.0+ with nvcc compiler
+### Подробные руководства
+- [ALFIS_GPU_INTEGRATION.md](ALFIS_GPU_INTEGRATION.md) - Интеграция с ALFIS
+- [PERFORMANCE.md](blakeout-gpu/PERFORMANCE.md) - Анализ производительности
+- [TEST_INSTRUCTIONS.md](blakeout-gpu/TEST_INSTRUCTIONS.md) - Тестирование
+
+## 🚀 Быстрая установка
+
+### Linux/MacOS
+
+```bash
+# Клонировать репозиторий
+git clone https://github.com/YOUR_REPO/blakeout-gpu
+cd blakeout-gpu
+
+# Автоматическая сборка
+chmod +x build_with_gpu.sh
+./build_with_gpu.sh
+
+# Запустить ALFIS
+cd Alfis-master
+./run_alfis_gpu.sh
+```
+
+### Windows
+
+```powershell
+# Клонировать репозиторий
+git clone https://github.com/YOUR_REPO/blakeout-gpu
+cd blakeout-gpu
+
+# Автоматическая сборка
+.\build_windows.ps1
+
+# Запустить ALFIS
+cd alfis-gpu-release
+.\alfis.exe
+```
+
+## 📋 Требования
+
+### Общие
+- NVIDIA GPU с Compute Capability ≥ 6.0 (GTX 1000 series+)
+- NVIDIA драйверы 450.00+
+- CUDA Toolkit 11.0+ (для сборки)
+
+### Linux
+- GCC 7+
+- CUDA Toolkit
 - Rust 1.70+
 
-### Build with GPU Support
+### Windows
+- Visual Studio Build Tools 2019+
+- CUDA Toolkit  
+- Rust (MSVC toolchain)
 
-```bash
-# Build GPU library
-cd blakeout-gpu
-cargo build --release
-
-# Build ALFIS with GPU mining
-cd ../Alfis-master
-cargo build --release --features gpu
-
-# Run ALFIS
-./target/release/alfis
-```
-
-### Test GPU Mining
-
-```bash
-cd blakeout-gpu
-cargo run --release --example gpu_miner
-```
-
-## ⚡ Performance
-
-Expected speedup compared to CPU mining:
-
-| GPU Model | Hash Rate | Speedup |
-|-----------|-----------|---------|
-| RTX 4090  | ~500 MH/s | 100x    |
-| RTX 3080  | ~300 MH/s | 60x     |
-| RTX 2060  | ~150 MH/s | 30x     |
-
-## 📖 Documentation
-
-- **[GPU_MINING.md](GPU_MINING.md)** - Full Russian guide with installation, usage, and troubleshooting
-- **[blakeout-gpu/README.md](blakeout-gpu/README.md)** - Technical documentation for the GPU library
-
-## 🔧 How It Works
-
-### Architecture
+## 🏗️ Структура проекта
 
 ```
-ALFIS Miner
-    ↓
-Thread 0: GPU Mining (8K hashes/batch)
-Thread 1-N: CPU Mining (parallel)
-    ↓
-blakeout-gpu Library
-    ↓
-CUDA Kernels (Blake2s + Blakeout)
-    ↓
-NVIDIA GPU
+blakeout-gpu/
+├── blakeout-gpu/          # CUDA библиотека Blakeout
+│   ├── cuda/              # CUDA kernels (Blake2s, Blakeout)
+│   ├── src/               # Rust FFI
+│   └── build.rs           # CUDA compilation
+├── Alfis-master/          # ALFIS с GPU поддержкой
+│   └── src/gpu_miner.rs   # GPU mining интеграция
+├── build_with_gpu.sh      # Linux/MacOS build script
+├── build_windows.ps1      # Windows build script
+└── docs/                  # Документация
 ```
 
-### Key Features
+## ⚙️ Технические детали
 
-- **Parallel Processing**: 4K-16K hashes computed simultaneously on GPU
-- **Memory-Hard**: Full 2MB Blakeout algorithm implemented in CUDA
-- **Automatic Fallback**: Gracefully falls back to CPU if GPU unavailable
-- **Hybrid Mining**: GPU + CPU threads work together
-- **Zero Configuration**: Automatically detects and uses available GPU
+### Архитектура
 
-## 🛠️ Build Without CUDA
+**Blakeout** - memory-hard алгоритм хеширования:
+- Основан на Blake2s (256-bit)
+- 65,536 последовательных итераций
+- 2MB буфер на хеш
+- Спроектирован быть GPU-resistant
 
-The library gracefully handles missing CUDA:
+**GPU оптимизации:**
+- Persistent GPU context (память выделяется один раз)
+- Async memory operations (cudaMemcpyAsync)
+- Optimal batch size: 4096 (8GB VRAM)
+- Parallel processing across different nonces
 
-```bash
-cd blakeout-gpu
-cargo build  # Will compile without GPU support if nvcc not found
-```
+### Почему ускорение только 3.7x?
 
-You'll see:
-```
-warning: CUDA compiler (nvcc) not found. GPU support will be disabled.
-```
+Blakeout **специально спроектирован** быть GPU-resistant через:
+- **65,536 последовательных** итераций Blake2s на каждый хеш
+- Каждая итерация зависит от предыдущей (no parallelization)
+- **2MB memory-hard** buffer на хеш
 
-ALFIS will automatically use CPU-only mining in this case.
+GPU может параллелить **разные nonces**, но не операции **внутри одного хеша**.
 
-## 📦 Components
+**3.7x - это отлично для memory-hard алгоритма!** Подробнее в [PERFORMANCE.md](blakeout-gpu/PERFORMANCE.md).
 
-### blakeout-gpu Library
+## 📊 Бенчмарки
 
-CUDA implementation of Blakeout:
-- `cuda/blake2s.cu` - Blake2s CUDA kernel
-- `cuda/blakeout.cu` - Blakeout memory-hard algorithm
-- `src/lib.rs` - Rust API
-- `src/gpu.rs` - FFI bindings
+### RTX 4080 SUPER
 
-### ALFIS Integration
+| Batch Size | Hash Rate | Time/Hash | VRAM Usage |
+|------------|-----------|-----------|------------|
+| 1024 | 443 H/s | 2.257ms | 2GB |
+| 2048 | 885 H/s | 1.130ms | 4GB |
+| **4096** | **1,682 H/s** | **0.595ms** | **8GB** ✅ |
 
-Modified ALFIS with GPU support:
-- `src/gpu_miner.rs` - GPU mining module
-- `src/miner.rs` - Hybrid CPU+GPU miner
-- Optional `gpu` feature flag
+**Сравнение с CPU:**
+- Ryzen 5 5500 (12 потоков): 450 H/s
+- GPU ускорение: **3.7x**
 
-## 🔍 Troubleshooting
+## 🙏 Благодарности
 
-### GPU Not Detected
-
-```bash
-# Check NVIDIA driver
-nvidia-smi
-
-# Check CUDA compiler
-nvcc --version
-
-# Install CUDA
-sudo apt-get install cuda-toolkit-12-0
-```
-
-### Out of Memory
-
-Reduce batch size in `Alfis-master/src/gpu_miner.rs`:
-
-```rust
-GpuMinerConfig {
-    batch_size: 2048,  // Instead of 8192
-    enabled: true,
-}
-```
-
-### Build Errors
-
-See [GPU_MINING.md](GPU_MINING.md) for detailed troubleshooting.
-
-## 🤝 Contributing
-
-Contributions welcome! Areas for improvement:
-- OpenCL support for AMD GPUs
-- Multi-GPU support
-- Memory optimizations
-- Dynamic batch sizing
-
-## 📄 License
-
-MIT OR Apache-2.0
-
-## 🙏 Credits
-
-- Original Blakeout algorithm by [Revertron](https://github.com/Revertron)
-- ALFIS blockchain by [Revertron](https://github.com/Revertron/Alfis)
-- GPU port implementation for enhanced mining performance
+- [Revertron](https://github.com/Revertron) за ALFIS и Blakeout
+- NVIDIA за CUDA Toolkit
+- Rust и Cargo сообществу
 
 ---
 
-**Note**: This implementation is optimized for ALFIS blockchain mining. Performance varies based on target difficulty and hardware configuration.
-
-For detailed setup instructions in Russian, see [GPU_MINING.md](GPU_MINING.md).
+**Made with ❤️ for ALFIS community**
