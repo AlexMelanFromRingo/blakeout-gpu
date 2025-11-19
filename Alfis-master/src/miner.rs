@@ -15,8 +15,11 @@ use crate::blockchain::types::BlockQuality;
 use crate::commons::*;
 use crate::event::Event;
 use crate::eventbus::{post, register};
+use crate::gpu_miner::{GpuMiner, GpuMinerConfig};
 use crate::keystore::check_public_key_strength;
 use crate::{setup_miner_thread, Block, Bytes, Context, Keystore};
+
+use lazy_static::lazy_static;
 
 #[derive(Clone)]
 pub struct MineJob {
@@ -43,6 +46,10 @@ impl MineJob {
 pub struct MinerState {
     pub mining: bool,
     pub full: bool
+}
+
+lazy_static! {
+    static ref GPU_MINER: GpuMiner = GpuMiner::new(GpuMinerConfig::default());
 }
 
 pub struct Miner {
@@ -309,6 +316,26 @@ impl Miner {
 fn find_hash(context: Arc<Mutex<Context>>, mut block: Block, running: Arc<AtomicBool>, thread: u32) -> Option<Block> {
     let target_diff = block.difficulty;
     let full = block.transaction.is_some();
+
+    // Try GPU mining first (only on thread 0 to avoid conflicts)
+    if thread == 0 && GPU_MINER.is_available() {
+        info!("Thread {} using GPU for mining", thread);
+        if let Some(found_block) = GPU_MINER.find_hash_gpu(
+            block.clone(),
+            target_diff,
+            running.clone(),
+            0,
+        ) {
+            return Some(found_block);
+        }
+        // If GPU mining stopped, check if we should continue
+        if !running.load(Ordering::Relaxed) {
+            return None;
+        }
+        info!("GPU mining stopped, falling back to CPU");
+    }
+
+    // CPU mining (original code)
     let mut digest = Blakeout::new();
     let mut max_diff = 0;
     loop {

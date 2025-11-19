@@ -19,6 +19,7 @@ pub mod crypto;
 pub mod dns;
 pub mod dns_utils;
 pub mod event;
+pub mod gpu_miner;
 pub mod keystore;
 pub mod miner;
 pub mod p2p;
