@@ -104,6 +104,8 @@ fn main() {
             &format!("{}/blakeout.o", out_dir),
             "-o",
             &format!("{}/device_link.o", out_dir),
+            "--compiler-options",
+            "-fPIC",
             "-arch", &compute_arch,
         ])
         .status();
