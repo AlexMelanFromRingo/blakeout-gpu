@@ -20,7 +20,7 @@ pub struct GpuMinerConfig {
 impl Default for GpuMinerConfig {
     fn default() -> Self {
         GpuMinerConfig {
-            batch_size: 8192, // Process 8K hashes per GPU batch
+            batch_size: 4096, // Optimal batch size for RTX 4080 (8GB VRAM)
             enabled: true,
         }
     }
@@ -96,19 +96,18 @@ impl GpuMiner {
         let mut hashes_computed = 0u64;
 
         while running.load(Ordering::Relaxed) {
-            // Update block data
-            block.nonce = current_nonce;
+            // Prepare block data (without nonce, will be added by GPU)
             let block_data = block.as_bytes_compact();
 
-            // Process batch on GPU
-            match hasher.hash_batch(&block_data, 0, target_diff) {
+            // Process batch on GPU starting from current_nonce
+            match hasher.hash_batch(&block_data, current_nonce, target_diff) {
                 Ok(results) => {
                     hashes_computed += batch_size as u64;
 
                     // Check all results for target difficulty
                     for result in results {
                         if result.difficulty >= target_diff {
-                            block.nonce = current_nonce + result.nonce;
+                            block.nonce = result.nonce;  // Use absolute nonce from GPU
                             block.hash = Bytes::from_bytes(&result.hash);
                             info!(
                                 "GPU found hash! Nonce: {}, Difficulty: {}",
