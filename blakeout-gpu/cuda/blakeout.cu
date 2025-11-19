@@ -12,6 +12,7 @@ __global__ void blakeout_hash_kernel(
     size_t input_len,               // Length of input data
     const uint64_t* nonces,         // Array of nonces to try
     uint32_t nonce_count,           // Number of nonces
+    uint8_t* buffers,               // Pre-allocated buffers (2MB per hash)
     uint8_t* output_hashes,         // Output hashes (32 bytes each)
     uint32_t* output_difficulties,  // Output difficulty values
     uint32_t target_difficulty      // Target difficulty to find
@@ -22,11 +23,8 @@ __global__ void blakeout_hash_kernel(
         return;
     }
 
-    // Allocate buffer in global memory (could be optimized with shared memory for smaller buffers)
-    uint8_t* buffer = (uint8_t*)malloc(BUFFER_SIZE);
-    if (!buffer) {
-        return; // Out of memory
-    }
+    // Use pre-allocated buffer for this thread
+    uint8_t* buffer = buffers + (idx * BUFFER_SIZE);
 
     blake2s_state state;
     uint8_t temp_hash[HASH_SIZE];
@@ -101,8 +99,6 @@ __global__ void blakeout_hash_kernel(
     uint32_t difficulty = leading + trailing;
 
     output_difficulties[idx] = difficulty;
-
-    free(buffer);
 }
 
 // Host wrapper function
@@ -119,11 +115,13 @@ extern "C" {
         // Allocate device memory
         uint8_t* d_input_data;
         uint64_t* d_nonces;
+        uint8_t* d_buffers;
         uint8_t* d_output_hashes;
         uint32_t* d_output_difficulties;
 
         cudaMalloc(&d_input_data, input_len);
         cudaMalloc(&d_nonces, nonce_count * sizeof(uint64_t));
+        cudaMalloc(&d_buffers, (size_t)nonce_count * BUFFER_SIZE);  // 2MB per hash
         cudaMalloc(&d_output_hashes, nonce_count * HASH_SIZE);
         cudaMalloc(&d_output_difficulties, nonce_count * sizeof(uint32_t));
 
@@ -137,13 +135,14 @@ extern "C" {
 
         blakeout_hash_kernel<<<blocksPerGrid, threadsPerBlock>>>(
             d_input_data, input_len, d_nonces, nonce_count,
-            d_output_hashes, d_output_difficulties, target_difficulty
+            d_buffers, d_output_hashes, d_output_difficulties, target_difficulty
         );
 
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess) {
             cudaFree(d_input_data);
             cudaFree(d_nonces);
+            cudaFree(d_buffers);
             cudaFree(d_output_hashes);
             cudaFree(d_output_difficulties);
             return err;
@@ -159,6 +158,7 @@ extern "C" {
         // Free device memory
         cudaFree(d_input_data);
         cudaFree(d_nonces);
+        cudaFree(d_buffers);
         cudaFree(d_output_hashes);
         cudaFree(d_output_difficulties);
 

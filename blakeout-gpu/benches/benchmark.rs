@@ -1,7 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use blakeout::Blakeout;
-
-#[cfg(feature = "gpu")]
 use blakeout_gpu::BlakeoutGpu;
 
 fn bench_cpu_single_hash(c: &mut Criterion) {
@@ -19,7 +17,6 @@ fn bench_cpu_single_hash(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(feature = "gpu")]
 fn bench_gpu_batch(c: &mut Criterion) {
     if !blakeout_gpu::gpu::is_cuda_available() {
         println!("Skipping GPU benchmarks: no CUDA device available");
@@ -47,7 +44,6 @@ fn bench_gpu_batch(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(feature = "gpu")]
 fn bench_comparison(c: &mut Criterion) {
     if !blakeout_gpu::gpu::is_cuda_available() {
         return;
@@ -80,14 +76,6 @@ fn bench_comparison(c: &mut Criterion) {
 
     group.finish();
 }
-
-#[cfg(not(feature = "gpu"))]
-fn bench_gpu_batch(_c: &mut Criterion) {
-    println!("GPU benchmarks disabled: compile with --features gpu");
-}
-
-#[cfg(not(feature = "gpu"))]
-fn bench_comparison(_c: &mut Criterion) {}
 
 criterion_group!(
     benches,
