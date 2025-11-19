@@ -25,6 +25,7 @@ extern "C" {
     ) -> c_int;
 }
 
+#[cfg(not(no_cuda))]
 const CUDA_SUCCESS: c_int = 0;
 
 pub fn is_cuda_available() -> bool {

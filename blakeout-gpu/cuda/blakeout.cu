@@ -93,11 +93,49 @@ extern "C" {
         if (!ctx) return NULL;
         ctx->batch_size = batch_size;
 
-        cudaMalloc(&ctx->d_buffers, (size_t)batch_size * BUFFER_SIZE);
-        cudaMalloc(&ctx->d_input_data, 512);
-        cudaMalloc(&ctx->d_nonces, batch_size * sizeof(uint64_t));
-        cudaMalloc(&ctx->d_output_hashes, batch_size * HASH_SIZE);
-        cudaMalloc(&ctx->d_output_difficulties, batch_size * sizeof(uint32_t));
+        cudaError_t err;
+
+        // Allocate GPU memory with error checking
+        err = cudaMalloc(&ctx->d_buffers, (size_t)batch_size * BUFFER_SIZE);
+        if (err != cudaSuccess) {
+            free(ctx);
+            return NULL;
+        }
+
+        err = cudaMalloc(&ctx->d_input_data, 512);
+        if (err != cudaSuccess) {
+            cudaFree(ctx->d_buffers);
+            free(ctx);
+            return NULL;
+        }
+
+        err = cudaMalloc(&ctx->d_nonces, batch_size * sizeof(uint64_t));
+        if (err != cudaSuccess) {
+            cudaFree(ctx->d_buffers);
+            cudaFree(ctx->d_input_data);
+            free(ctx);
+            return NULL;
+        }
+
+        err = cudaMalloc(&ctx->d_output_hashes, batch_size * HASH_SIZE);
+        if (err != cudaSuccess) {
+            cudaFree(ctx->d_buffers);
+            cudaFree(ctx->d_input_data);
+            cudaFree(ctx->d_nonces);
+            free(ctx);
+            return NULL;
+        }
+
+        err = cudaMalloc(&ctx->d_output_difficulties, batch_size * sizeof(uint32_t));
+        if (err != cudaSuccess) {
+            cudaFree(ctx->d_buffers);
+            cudaFree(ctx->d_input_data);
+            cudaFree(ctx->d_nonces);
+            cudaFree(ctx->d_output_hashes);
+            free(ctx);
+            return NULL;
+        }
+
         return ctx;
     }
 
@@ -124,9 +162,15 @@ extern "C" {
     ) {
         if (!ctx || nonce_count > ctx->batch_size) return cudaErrorInvalidValue;
 
-        cudaMemcpy(ctx->d_input_data, h_input_data, input_len, cudaMemcpyHostToDevice);
-        cudaMemcpy(ctx->d_nonces, h_nonces, nonce_count * sizeof(uint64_t), cudaMemcpyHostToDevice);
+        // Copy input data to device
+        cudaError_t err;
+        err = cudaMemcpy(ctx->d_input_data, h_input_data, input_len, cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) return err;
 
+        err = cudaMemcpy(ctx->d_nonces, h_nonces, nonce_count * sizeof(uint64_t), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) return err;
+
+        // Launch kernel
         int threadsPerBlock = 256;
         int blocksPerGrid = (nonce_count + threadsPerBlock - 1) / threadsPerBlock;
 
@@ -135,12 +179,18 @@ extern "C" {
             ctx->d_buffers, ctx->d_output_hashes, ctx->d_output_difficulties, target_difficulty
         );
 
-        cudaError_t err = cudaGetLastError();
+        err = cudaGetLastError();
         if (err != cudaSuccess) return err;
 
-        cudaDeviceSynchronize();
-        cudaMemcpy(h_output_hashes, ctx->d_output_hashes, nonce_count * HASH_SIZE, cudaMemcpyDeviceToHost);
-        cudaMemcpy(h_output_difficulties, ctx->d_output_difficulties, nonce_count * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        // Synchronize and copy results back
+        err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) return err;
+
+        err = cudaMemcpy(h_output_hashes, ctx->d_output_hashes, nonce_count * HASH_SIZE, cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess) return err;
+
+        err = cudaMemcpy(h_output_difficulties, ctx->d_output_difficulties, nonce_count * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess) return err;
 
         return cudaSuccess;
     }
