@@ -1,139 +1,124 @@
-# Blakeout GPU Mining для ALFIS
+# Blakeout GPU Mining for ALFIS
 
-GPU-ускоренная версия алгоритма Blakeout для майнинга ALFIS на NVIDIA GPU.
+GPU-accelerated [Blakeout](https://github.com/Revertron/blakeout) hash for
+mining blocks on the [ALFIS](https://github.com/Revertron/Alfis) DNS
+blockchain. Provides a CUDA library (`blakeout-gpu`) plus a fork of ALFIS
+(`Alfis-master/`) wired to use it via a `gpu` cargo feature.
 
-## 🎯 Что это?
+## What's in the box
 
-Это порт библиотеки [Blakeout](https://github.com/Revertron/blakeout) на CUDA для ускорения майнинга блоков в блокчейне ALFIS.
+| Path | Purpose |
+|------|---------|
+| `blakeout-gpu/`  | The CUDA library — Rust crate with FFI to a CUDA kernel that batches Blakeout hashes per nonce. |
+| `blakeout-gpu/cuda/blake2s.cu`  | Hand-rolled Blake2s on the device. |
+| `blakeout-gpu/cuda/blakeout.cu` | The 65,536-iteration Blakeout chain on top of `blake2s`, plus the host glue. |
+| `blakeout-master/` | Vendored upstream CPU Blakeout used by both the lib's `blakeout_gpu_matches_cpu_reference` test and ALFIS's CPU miner. |
+| `Alfis-master/`  | ALFIS with the GPU miner wired in — see `src/gpu_miner.rs` and the `gpu` cargo feature in `Cargo.toml`. |
 
-**Производительность:**
-- **RTX 4080 SUPER:** ~1,682 H/s (3.7x быстрее CPU)
-- **RTX 4090:** ~2,000-2,500 H/s  
-- **RTX 3080:** ~800-1,000 H/s
+## Status
 
-## 📚 Документация
+* GPU mining works and produces hashes that match the canonical CPU
+  Blakeout byte-for-byte (verified by an end-to-end test, see
+  *Correctness* below).
+* ALFIS is integrated: build it with `--features gpu` to get GPU mining
+  on thread 0; non-GPU threads fall back to CPU.
+* Performance on RTX 4080: **~1,550 H/s** at batch size 4096, ~3.5×
+  faster than the same machine's CPU mining. Blakeout is intentionally
+  GPU-resistant (65,536 sequential Blake2s iterations / 2 MB memory-hard
+  buffer per hash) so this multiplier is close to the theoretical
+  ceiling for this algorithm on this hardware.
 
-### Быстрый старт
-- **Linux/MacOS:** [QUICK_START.md](QUICK_START.md)
-- **Windows:** [WINDOWS_BUILD.md](WINDOWS_BUILD.md)
+## Correctness
 
-### Подробные руководства
-- [ALFIS_GPU_INTEGRATION.md](ALFIS_GPU_INTEGRATION.md) - Интеграция с ALFIS
-- [PERFORMANCE.md](blakeout-gpu/PERFORMANCE.md) - Анализ производительности
-- [TEST_INSTRUCTIONS.md](blakeout-gpu/TEST_INSTRUCTIONS.md) - Тестирование
+The previous version of this project shipped a silent bug: row 3 of the
+device-side Blake2s SIGMA permutation table was wrong from index 9
+onwards. Every G call in round 3 still indexed valid `m[]` words, so the
+kernel always ran cleanly — but it computed a *non-Blake2s* hash whenever
+any of `m[4..15]` held non-zero bytes. Since real ALFIS blocks are always
+larger than 16 bytes, this meant **every "mined" hash from the prior
+version would have been rejected by the network**.
 
-## 🚀 Быстрая установка
+The fix is one character — restoring the canonical row from RFC 7693 —
+and it's locked in by:
 
-### Linux/MacOS
+* `tests::gpu_blake2s_matches_reference` — runs the kernel against
+  several inputs of varied length and compares to the `blake2` Rust
+  crate output (which itself agrees with `hashlib.blake2s`).
+* `tests::test_gpu_matches_cpu_reference` — runs the full Blakeout
+  chain on the GPU and compares to `blakeout::Blakeout` byte-for-byte.
+* `tests::cpu_kernel_mirror_matches_blakeout` — a Rust port of the
+  kernel logic that runs on the host with no CUDA dependency, so the
+  *design* of the kernel (chain length, two-pass forward+reverse
+  hashing) is verifiable even on machines without an NVIDIA GPU.
+
+## Build & test
 
 ```bash
-# Клонировать репозиторий
-git clone https://github.com/YOUR_REPO/blakeout-gpu
+# CUDA library + tests
 cd blakeout-gpu
+cargo test --release            # 7 tests, including CPU↔GPU equivalence
+cargo run --release --example gpu_miner    # one-shot demo: find a hash at difficulty 18
 
-# Автоматическая сборка
-chmod +x build_with_gpu.sh
-./build_with_gpu.sh
+# Bench across batch sizes (perf only — no correctness)
+cargo run --release --example perf_test
+```
 
-# Запустить ALFIS
+```bash
+# ALFIS with GPU mining
 cd Alfis-master
-./run_alfis_gpu.sh
+cargo build --release --features gpu --no-default-features
+./target/release/alfis --no-gui    # boots, GPU miner kicks in on thread 0
 ```
 
-### Windows
+The `webgui` default feature pulls in `wry`+`tao`+`glib-2.0`; if those
+system libraries aren't installed, build with `--no-default-features` as
+above. The GPU feature is independent of the GUI feature.
 
-```powershell
-# Клонировать репозиторий
-git clone https://github.com/YOUR_REPO/blakeout-gpu
-cd blakeout-gpu
+## Hardware requirements
 
-# Автоматическая сборка
-.\build_windows.ps1
+* NVIDIA GPU with compute capability ≥ 8.0 (sm_86 default; override
+  with `CUDA_COMPUTE_ARCH=sm_89` for a 4090, etc).
+* CUDA Toolkit ≥ 11.0 (built and tested with 12.0).
+* NVIDIA driver supporting your CUDA version.
+* On WSL2: CUDA works (WSL CUDA driver from NVIDIA), but native
+  Windows or Linux gives slightly better headline numbers.
 
-# Запустить ALFIS
-cd alfis-gpu-release
-.\alfis.exe
-```
+## Performance characteristics
 
-## 📋 Требования
+The kernel is bottlenecked by the algorithm, not by GPU silicon. Per-thread
+work is ~65,536 sequential Blake2s rounds touching a 2 MB scratch buffer,
+so threads stall on memory, not on FP throughput.
 
-### Общие
-- NVIDIA GPU с Compute Capability ≥ 6.0 (GTX 1000 series+)
-- NVIDIA драйверы 450.00+
-- CUDA Toolkit 11.0+ (для сборки)
+| Batch size | RTX 4080 hash rate | Time per hash | VRAM used |
+|------------|--------------------|---------------|-----------|
+| 1024 | ~365 H/s | 2.7 ms | 2 GB |
+| 2048 | ~720 H/s | 1.4 ms | 4 GB |
+| **4096** | **~1,550 H/s** | **0.65 ms** | **8 GB** |
+| 8192 | OOM on 16 GB cards | – | – |
 
-### Linux
-- GCC 7+
-- CUDA Toolkit
-- Rust 1.70+
+Numbers higher than this on the same algorithm have not been
+demonstrated anywhere — Blakeout's design (sequential dependencies +
+memory-hard buffer) puts a hard ceiling around `Blake2s_throughput / 65536`.
 
-### Windows
-- Visual Studio Build Tools 2019+
-- CUDA Toolkit  
-- Rust (MSVC toolchain)
-
-## 🏗️ Структура проекта
+## Project layout
 
 ```
 blakeout-gpu/
-├── blakeout-gpu/          # CUDA библиотека Blakeout
-│   ├── cuda/              # CUDA kernels (Blake2s, Blakeout)
-│   ├── src/               # Rust FFI
-│   └── build.rs           # CUDA compilation
-├── Alfis-master/          # ALFIS с GPU поддержкой
-│   └── src/gpu_miner.rs   # GPU mining интеграция
-├── build_with_gpu.sh      # Linux/MacOS build script
-├── build_windows.ps1      # Windows build script
-└── docs/                  # Документация
+├── blakeout-gpu/         CUDA library (Rust + .cu kernels)
+│   ├── cuda/             blake2s.cu, blakeout.cu, blake2s.cuh
+│   ├── src/lib.rs        public API (BlakeoutGpu, gpu_blake2s)
+│   ├── src/gpu.rs        FFI bindings
+│   ├── examples/         gpu_miner.rs, perf_test.rs
+│   └── tests/            integration tests via the public API
+├── blakeout-master/      vendored CPU Blakeout reference
+├── Alfis-master/         ALFIS fork with `gpu` cargo feature
+│   └── src/gpu_miner.rs  drop-in GPU miner used by miner.rs (thread 0)
+├── build_with_gpu.sh     convenience build for Linux/macOS
+├── build_windows.ps1     convenience build for Windows
+└── docs/                 supporting markdown (PERFORMANCE.md etc.)
 ```
 
-## ⚙️ Технические детали
+## License
 
-### Архитектура
-
-**Blakeout** - memory-hard алгоритм хеширования:
-- Основан на Blake2s (256-bit)
-- 65,536 последовательных итераций
-- 2MB буфер на хеш
-- Спроектирован быть GPU-resistant
-
-**GPU оптимизации:**
-- Persistent GPU context (память выделяется один раз)
-- Async memory operations (cudaMemcpyAsync)
-- Optimal batch size: 4096 (8GB VRAM)
-- Parallel processing across different nonces
-
-### Почему ускорение только 3.7x?
-
-Blakeout **специально спроектирован** быть GPU-resistant через:
-- **65,536 последовательных** итераций Blake2s на каждый хеш
-- Каждая итерация зависит от предыдущей (no parallelization)
-- **2MB memory-hard** buffer на хеш
-
-GPU может параллелить **разные nonces**, но не операции **внутри одного хеша**.
-
-**3.7x - это отлично для memory-hard алгоритма!** Подробнее в [PERFORMANCE.md](blakeout-gpu/PERFORMANCE.md).
-
-## 📊 Бенчмарки
-
-### RTX 4080 SUPER
-
-| Batch Size | Hash Rate | Time/Hash | VRAM Usage |
-|------------|-----------|-----------|------------|
-| 1024 | 443 H/s | 2.257ms | 2GB |
-| 2048 | 885 H/s | 1.130ms | 4GB |
-| **4096** | **1,682 H/s** | **0.595ms** | **8GB** ✅ |
-
-**Сравнение с CPU:**
-- Ryzen 5 5500 (12 потоков): 450 H/s
-- GPU ускорение: **3.7x**
-
-## 🙏 Благодарности
-
-- [Revertron](https://github.com/Revertron) за ALFIS и Blakeout
-- NVIDIA за CUDA Toolkit
-- Rust и Cargo сообществу
-
----
-
-**Made with ❤️ for ALFIS community**
+Same as upstream ALFIS / Blakeout. Components are MIT or Apache-2.0
+(see individual `LICENSE` / `Cargo.toml`).
