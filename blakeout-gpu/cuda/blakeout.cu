@@ -87,6 +87,38 @@ typedef struct {
     uint32_t batch_size;
 } BlakeoutContext;
 
+__global__ void single_blake2s_kernel(
+    const uint8_t* input,
+    uint32_t input_len,
+    uint8_t* output
+) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+    blake2s(output, input, input_len);
+}
+
+extern "C" cudaError_t blakeout_single_blake2s(
+    const uint8_t* h_input,
+    uint32_t input_len,
+    uint8_t* h_output
+) {
+    uint8_t* d_input = NULL;
+    uint8_t* d_output = NULL;
+    cudaError_t err = cudaMalloc(&d_input, input_len);
+    if (err != cudaSuccess) return err;
+    err = cudaMalloc(&d_output, 32);
+    if (err != cudaSuccess) { cudaFree(d_input); return err; }
+    err = cudaMemcpy(d_input, h_input, input_len, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) { cudaFree(d_input); cudaFree(d_output); return err; }
+    single_blake2s_kernel<<<1, 1>>>(d_input, input_len, d_output);
+    err = cudaDeviceSynchronize();
+    if (err == cudaSuccess) {
+        err = cudaMemcpy(h_output, d_output, 32, cudaMemcpyDeviceToHost);
+    }
+    cudaFree(d_input);
+    cudaFree(d_output);
+    return err;
+}
+
 extern "C" {
     BlakeoutContext* blakeout_create_context(uint32_t batch_size) {
         BlakeoutContext* ctx = (BlakeoutContext*)malloc(sizeof(BlakeoutContext));

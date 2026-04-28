@@ -23,6 +23,29 @@ extern "C" {
         h_output_difficulties: *mut c_uint,
         target_difficulty: c_uint,
     ) -> c_int;
+    fn blakeout_single_blake2s(
+        h_input: *const c_uchar,
+        input_len: c_uint,
+        h_output: *mut c_uchar,
+    ) -> c_int;
+}
+
+/// Compute a single Blake2s-256 hash on the GPU. Useful for unit-testing the
+/// device-side blake2s implementation in isolation from the full Blakeout
+/// chain. Returns the 32-byte output.
+#[cfg(not(no_cuda))]
+pub fn gpu_blake2s(input: &[u8]) -> Result<[u8; 32], BlakeoutGpuError> {
+    let mut out = [0u8; 32];
+    let rc = unsafe {
+        blakeout_single_blake2s(input.as_ptr(), input.len() as c_uint, out.as_mut_ptr())
+    };
+    if rc == CUDA_SUCCESS { Ok(out) }
+    else { Err(BlakeoutGpuError::CudaError(format!("CUDA error code {}", rc))) }
+}
+
+#[cfg(no_cuda)]
+pub fn gpu_blake2s(_input: &[u8]) -> Result<[u8; 32], BlakeoutGpuError> {
+    Err(BlakeoutGpuError::NoGpuAvailable)
 }
 
 #[cfg(not(no_cuda))]
